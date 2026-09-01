@@ -28,18 +28,9 @@ export const OC_COLUMNS = {
 
 // Columnas comunes a *HARDWARE y *SOFTWARE que usamos para el diff de items.
 // OJO: en ambas tablas el vínculo a la OC/OPI es por texto (no relación),
-// así que el match se hace por el número de OC / OPI.
+// así que el match se hace por el número de OC / OPI. Confirmado contra
+// datos reales de la app (ver README > "Confirmaciones pendientes").
 export const HARDWARE_COLUMNS = {
-  rowId: "$rowID",
-  numeroOC: "N OC",
-  opi: "Opi",
-  producto: "PRODUCTO/NOMBRE",
-  descripcion: "PRODUCTO/DESCRIPCION",
-  serial: "PRODUCTO/SERIAL",
-  statusDocumentos: "Status Documentos",
-};
-
-export const SOFTWARE_COLUMNS = {
   rowId: "$rowID",
   numeroOC: "Nro OC",
   opi: "NRO OPI",
@@ -47,6 +38,16 @@ export const SOFTWARE_COLUMNS = {
   descripcion: "Descr.",
   serial: "Serie o Contrato",
   statusDocumentos: "Status Chequeo",
+};
+
+export const SOFTWARE_COLUMNS = {
+  rowId: "$rowID",
+  numeroOC: "N OC",
+  opi: "Opi",
+  producto: "PRODUCTO/NOMBRE",
+  descripcion: "PRODUCTO/DESCRIPCION",
+  serial: "PRODUCTO/SERIAL",
+  statusDocumentos: "Status Documentos",
 };
 
 // Columnas de la tabla de log de notificaciones (a crear en Glide, ver README).
