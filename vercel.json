@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/check-coretrack",
+      "schedule": "0 23 * * *"
+    }
+  ]
+}

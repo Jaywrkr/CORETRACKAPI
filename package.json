@@ -1,0 +1,20 @@
+{
+  "name": "coretrackapi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cron serverless en Vercel que monitorea eventos de CoreTrack (Glide) y notifica por correo via Gmail API.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "check:local": "node scripts/run-local.js"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
