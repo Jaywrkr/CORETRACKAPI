@@ -26,6 +26,12 @@ export const OC_COLUMNS = {
   correo2: "Correo 2",
 };
 
+// Valores de OC_COLUMNS.estado que se consideran "OC completa" (dispara el
+// evento OC_COMPLETADA). Confirmado con datos reales: se vio "RECIBIDO" y
+// "DIFERIDO" en la tabla; por ahora solo RECIBIDO cuenta como completa.
+// Ajustar si hay otros valores terminales.
+export const OC_ESTADOS_COMPLETA = ["RECIBIDO"];
+
 // Columnas comunes a *HARDWARE y *SOFTWARE que usamos para el diff de items.
 // OJO: en ambas tablas el vínculo a la OC/OPI es por texto (no relación),
 // así que el match se hace por el número de OC / OPI. Confirmado contra
@@ -54,7 +60,7 @@ export const SOFTWARE_COLUMNS = {
 export const LOG_COLUMNS = {
   rowId: "$rowID",
   itemRowId: "ItemRowID", // rowID del elemento notificado (OC o item)
-  eventType: "EventType", // "nueva_oc" | "item_agregado" | "opi_completo"
+  eventType: "EventType", // uno de EVENT_TYPES
   fecha: "Fecha", // date-time de cuándo se notificó
   detalle: "Detalle", // texto libre para trazabilidad
 };
@@ -62,5 +68,6 @@ export const LOG_COLUMNS = {
 export const EVENT_TYPES = {
   NUEVA_OC: "nueva_oc",
   ITEM_AGREGADO: "item_agregado",
-  OPI_COMPLETO: "opi_completo",
+  OC_COMPLETADA: "oc_completada", // Estado de la OC llega a OC_ESTADOS_COMPLETA
+  OPI_COMPLETO: "opi_completo", // todos los items del OPI (cruzando OCs) en estado recibido
 };

@@ -3,11 +3,19 @@
 Cron serverless en Vercel que monitorea eventos de **CoreTrack** (app de Glide)
 y notifica por correo (Gmail API), ya que Glide no ofrece webhooks salientes.
 
-Detecta tres tipos de evento:
+Detecta cuatro tipos de evento:
 
 - **Nueva OC registrada**
 - **Item (hardware o software) agregado a una OC existente**
-- **OPI completo** (todos los items de un OPI en estado "recibido")
+- **OC completada**: el campo `Estado` de la OC llega a `RECIBIDO` (equivalente
+  al workflow existente "COMPLETA ORDEN DE COMPRE")
+- **OPI completo**: todos los items de un mismo OPI (que puede abarcar varias
+  OC) están en estado "recibido"
+
+Estos cuatro mapean 1:1 a los 4 workflows nativos de Glide que ya existían
+(`CORREO OC CREADA`, `CORREO NUEVA ORDEN HW/SW`, `COMPLETA ORDEN DE COMPRE`)
+más el rollup extra de OPI que pediste, replicando esa misma lógica pero de
+forma confiable fuera de Glide.
 
 Para no re-notificar lo mismo cada día, cada evento notificado se registra en
 una tabla de "log" dentro de la misma app de Glide.
@@ -33,31 +41,43 @@ La lógica de detección (`detectEvents.js`) está separada del envío de correo
 poder probar cada parte por separado. Hay un test simple sin dependencias en
 `lib/detectEvents.test.js` — correrlo con `node lib/detectEvents.test.js`.
 
-## ⚠️ Confirmaciones pendientes (antes de dar la lógica por definitiva)
+## ✅ Confirmado / ⚠️ Pendiente
 
-El esquema en `config/glideSchema.js` se armó inspeccionando la app de Glide
-vía un MCP local que ya tenías conectado. Faltan confirmar estos puntos:
+El esquema en `config/glideSchema.js` se armó y validó inspeccionando datos
+reales de la app de Glide vía un MCP local ya conectado (`glide-core-mcp`).
+Confirmado hasta ahora:
 
-1. **Tabla de OC**: usé `Comtrol de Ordenes de Compra Track`, con columnas
-   `N°OC`, `OPI`, `Estado`, y `Correo 0/1/2` como destinatarios. ¿Es correcta
-   esta tabla y son esas las columnas relevantes?
-2. **Items de hardware/software**: usé `*HARDWARE` y `*SOFTWARE`. Ahí el
-   vínculo a la OC/OPI es por **texto** (`N OC`/`Nro OC`, `Opi`/`NRO OPI`),
-   no por relación nativa de Glide — el matching se hace comparando esos
-   valores de texto. ¿Es así como se vinculan en la práctica, o hay una
-   relación nativa que debería usar en su lugar?
-3. **Estado "recibido"**: no encontré una columna de estado por-item que
-   diga literalmente "recibido". Usé `Status Documentos` (hardware) /
-   `Status Chequeo` (software) comparando contra los valores
-   `recibido/recibida/entregado/entregada` (ver `RECEIVED_STATUSES` en
-   `lib/detectEvents.js`). ¿Es esa la columna correcta y cuáles son los
-   valores reales que puede tomar?
-4. **Tabla de OPI**: no encontré una tabla propia de "Órdenes de Pedido
-   Interno" — el número de OPI aparece como campo de texto repetido en OC,
-   *HARDWARE y *SOFTWARE. La detección de "OPI completo" agrupa items por
-   ese número de texto. Si en realidad existe una tabla de OPI separada
-   (o el número de OPI vive en otro lado), avisame para ajustar el join.
-5. **Tabla de log de notificaciones**: no existe todavía. Hay que crearla a
+- **Tabla de OC** = `Comtrol de Ordenes de Compra Track`, columnas `N°OC`,
+  `OPI`, `Estado`, `Correo 0/1/2` (destinatarios).
+- **Items** = `*HARDWARE` (columnas `Nro OC`, `NRO OPI`, `Status Chequeo`) y
+  `*SOFTWARE` (columnas `N OC`, `Opi`, `Status Documentos`) — el vínculo a
+  la OC/OPI es por texto, no por relación nativa de Glide.
+- **OC completada** = el campo `Estado` de la OC llega a `RECIBIDO` (visto en
+  datos reales, junto con `DIFERIDO` como otro valor posible). Es un evento
+  separado de "OPI completo" — decisión tomada explícitamente: si en el
+  futuro aparece otro valor terminal (ej. `ENTREGADO`), agregarlo a
+  `OC_ESTADOS_COMPLETA` en `config/glideSchema.js`.
+- Los 4 eventos mapean a los 4 workflows nativos de Glide que ya existían
+  (`CORREO OC CREADA`, `CORREO NUEVA ORDEN HW`, `CORREO NUEVA ORDEN SW`,
+  `COMPLETA ORDEN DE COMPRE`), que no estaban enviando el correo de forma
+  confiable — de ahí este proyecto.
+
+Pendiente de confirmar:
+
+1. **Estado "recibido" por ítem**: en `*HARDWARE`/`*SOFTWARE` no hay una
+   columna que diga literalmente "recibido" — vi el valor `REGISTRADO` en
+   `Status Chequeo` para un ítem recién vinculado a una OC, pero no el resto
+   de la lista de valores posibles. Uso `recibido/recibida/entregado/
+   entregada` como aproximación (`RECEIVED_STATUSES` en
+   `lib/detectEvents.js`). Esto solo afecta al evento **OPI completo**
+   (rollup de items) — pasame la lista real de valores de `Status Chequeo` /
+   `Status Documentos` para ajustarlo.
+2. **Tabla de OPI**: no existe una tabla propia de "Órdenes de Pedido
+   Interno" — el número de OPI es un campo de texto repetido en OC,
+   *HARDWARE y *SOFTWARE. El evento "OPI completo" agrupa items por ese
+   texto (puede abarcar más de una OC). Si el número de OPI vive en otro
+   lado o hay una tabla dedicada, avisame para ajustar el join.
+3. **Tabla de log de notificaciones**: no existe todavía. Hay que crearla a
    mano en el editor de Glide (la API de Glide no crea tablas nuevas, solo
    agrega filas a tablas existentes). Crear una tabla llamada
    `Notificaciones CoreTrack Log` con estas columnas de tipo texto/fecha:
@@ -65,12 +85,11 @@ vía un MCP local que ya tenías conectado. Faltan confirmar estos puntos:
    - `EventType` (texto)
    - `Fecha` (fecha y hora)
    - `Detalle` (texto)
-6. **Destinatarios**: por ahora tomo los correos de las columnas `Correo
-   0/1/2` de la fila de OC (se propagan también a los eventos de item y de
-   OPI vía esa misma OC). Además, `config/recipients.js` permite sumar
-   destinatarios fijos por tipo de evento vía variables de entorno
-   (`NOTIFY_EXTRA_*`). ¿Necesitas otra fuente de correos (ej. una tabla de
-   "Personal" por rol)?
+4. **Destinatarios**: por ahora tomo los correos de las columnas `Correo
+   0/1/2` de la fila de OC (se propagan a los 4 eventos vía esa misma OC).
+   Además, `config/recipients.js` permite sumar destinatarios fijos por tipo
+   de evento vía variables de entorno (`NOTIFY_EXTRA_*`). ¿Necesitas otra
+   fuente de correos (ej. una tabla de "Personal" por rol)?
 
 Estos cambios son pequeños y acotados a `config/glideSchema.js` y
 `lib/detectEvents.js` — el resto del proyecto no depende de los nombres
