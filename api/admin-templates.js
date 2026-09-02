@@ -1,6 +1,5 @@
 import { requireAdminAuth } from "../lib/adminAuth.js";
-import { loadTemplates, saveTemplate, TEMPLATE_PLACEHOLDERS } from "../lib/templates.js";
-import { EVENT_TYPES } from "../config/glideSchema.js";
+import { loadTemplates, saveTemplate, TEMPLATE_PLACEHOLDERS, TEMPLATE_KEYS } from "../lib/templates.js";
 
 export default async function handler(req, res) {
   if (!requireAdminAuth(req, res)) return;
@@ -8,7 +7,7 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     try {
       const templates = await loadTemplates();
-      const items = Object.values(EVENT_TYPES).map((eventType) => ({
+      const items = TEMPLATE_KEYS.map((eventType) => ({
         eventType,
         asunto: templates[eventType]?.asunto || "",
         cuerpo: templates[eventType]?.cuerpo || "",
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const { eventType, asunto, cuerpo } = req.body || {};
-      if (!Object.values(EVENT_TYPES).includes(eventType)) {
+      if (!TEMPLATE_KEYS.includes(eventType)) {
         res.status(400).json({ error: `eventType inválido: ${eventType}` });
         return;
       }

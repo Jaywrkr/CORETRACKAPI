@@ -21,6 +21,17 @@ que no estaban enviando el correo de forma confiable — de ahí este proyecto.
 `COMPLETA ORDEN DE COMPRE` solo avisaba en el último item (3 de 3); acá se
 decidió avisar en cada incremento.
 
+### 📬 Un resumen por destinatario, no un correo por evento
+
+Los workflows nativos mandaban un correo separado por cada evento. Como el
+cron corre una vez al día, eso significa que un vendedor con varias OC
+activas puede terminar recibiendo varios correos sueltos el mismo día (2 OC
+nuevas + 4 items agregados + 2 avances de OPI = 8 correos). En vez de eso,
+cada corrida arma **un solo correo de resumen por destinatario**, agrupando
+todos sus eventos del día por tipo (`lib/digest.js`). El log de
+notificaciones sigue siendo por evento individual (para no re-notificar lo
+mismo), pero el envío es agrupado.
+
 ### ⚠️ Limitación importante de la API de Glide
 
 La API pública de Tablas de Glide solo expone las columnas de **datos**
@@ -40,9 +51,12 @@ una tabla de Glide — ver más abajo).
 ## ✏️ Editar los textos de los correos sin tocar código
 
 Entrando a `https://<tu-proyecto>.vercel.app/admin` (pide usuario/contraseña,
-ver `ADMIN_USER`/`ADMIN_PASSWORD`) hay un panel donde se edita el **Asunto**
-y el **Cuerpo** de cada tipo de evento, con vista previa en vivo y botones
-para insertar los placeholders disponibles (`{{numeroOC}}`, `{{proveedor}}`,
+ver `ADMIN_USER`/`ADMIN_PASSWORD`) hay un panel con un tab por tipo de
+evento **más un tab "digest"**. El tab "digest" es el encabezado del correo
+de resumen (asunto + intro); los demás tabs son cómo se ve la línea de cada
+evento dentro de ese resumen (agrupadas automáticamente bajo un título como
+"Nuevas Órdenes de Compra (2)"). Hay vista previa en vivo y botones para
+insertar los placeholders disponibles (`{{numeroOC}}`, `{{proveedor}}`,
 etc). Los cambios se guardan como JSON en Vercel Blob y los toma la próxima
 corrida del cron — sin redeploy, sin git, sin pedirle nada a nadie.
 
@@ -68,10 +82,11 @@ lib/detectEvents.js         Lógica pura de diff/detección de eventos (testeabl
 lib/notificationLog.js      Log de notificaciones (JSON en Vercel Blob)
 lib/templates.js             Carga/guarda plantillas (JSON en Vercel Blob) + motor {{placeholder}}
 lib/mailer.js                Envío de correo vía Gmail API
-lib/emailTemplates.js       Arma asunto/HTML final combinando plantilla + payload
+lib/emailTemplates.js       Arma asunto/HTML de UNA línea de evento (plantilla + payload)
+lib/digest.js                 Agrupa eventos por destinatario y arma el correo de resumen
 lib/resolvePersonal.js      Resuelve nombres de Personal -> email vía tabla Users
 lib/adminAuth.js             HTTP Basic Auth para /admin y /api/admin-templates
-lib/runCheck.js              Orquesta: fetch -> detect -> notify -> log
+lib/runCheck.js              Orquesta: fetch -> detect -> agrupar por destinatario -> enviar -> log
 config/glideSchema.js       Nombres de tablas y columnas de Glide
 config/recipients.js        Mapeo evento -> destinatarios adicionales
 scripts/run-local.js        Corre runCheck() localmente con .env
@@ -87,6 +102,7 @@ poder probar cada parte por separado. Hay tests simples sin dependencias:
 node lib/detectEvents.test.js
 node lib/resolvePersonal.test.js
 node lib/templates.test.js
+node lib/digest.test.js
 ```
 
 ## ✅ Confirmado / ⚠️ Pendiente

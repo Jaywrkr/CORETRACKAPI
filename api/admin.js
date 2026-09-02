@@ -95,7 +95,7 @@ const PAGE = `<!doctype html>
 <body>
 <header>
   <h1>Plantillas de correo — CoreTrack</h1>
-  <p>Editá el asunto y el cuerpo de cada notificación. Los cambios se guardan en Glide y aplican en la próxima corrida del cron, sin redeploy.</p>
+  <p>Cada destinatario recibe UN resumen diario con todos sus eventos del día, no un correo por evento. "digest" es el encabezado del resumen; los demás tabs son cómo se ve cada línea dentro de él. Los cambios aplican en la próxima corrida del cron, sin redeploy.</p>
 </header>
 <main>
   <div class="tabs" id="tabs"></div>
@@ -127,10 +127,17 @@ const PAGE = `<!doctype html>
 </main>
 <script>
   const SAMPLE_PAYLOADS = {
+    digest: { fecha: "2 de septiembre de 2026", totalEventos: 8 },
     nueva_oc: { numeroOC: "011-2026", proveedor: "NEXSYS", cliente: "MUTUALISTA AZUAY", opi: "PAC 1215" },
     item_agregado: { numeroOC: "011-2026", producto: "Switch Aruba 24p", descripcion: "Switch de red", serial: "SN-12345", sourceType: "hardware" },
     opi_progreso: { opi: "OPI 1100", recibidas: 2, total: 3, estado: "en progreso" },
   };
+
+  const DIGEST_PREVIEW_SECTIONS =
+    "\\n\\nNuevas Órdenes de Compra (2):\\n• Nueva OC registrada: 011-2026\\n• Nueva OC registrada: 022-2026\\n\\n" +
+    "Items agregados (4):\\n• Item agregado a OC 011-2026\\n• Item agregado a OC 011-2026\\n• Item agregado a OC 022-2026\\n• Item agregado a OC 022-2026\\n\\n" +
+    "Progreso de recepción por OPI (2):\\n• OPI OPI 1100: llegaron 2 de 3\\n• OPI OPI 1215: llegaron 3 de 3\\n\\n" +
+    "(las líneas de cada sección usan el Asunto de esa pestaña)";
 
   let items = [];
   let current = null;
@@ -171,7 +178,9 @@ const PAGE = `<!doctype html>
     const cuerpo = document.getElementById("cuerpo").value;
     const sample = SAMPLE_PAYLOADS[current.eventType] || {};
     document.getElementById("preview-subject").textContent = renderTemplate(asunto, sample);
-    document.getElementById("preview-body").textContent = renderTemplate(cuerpo, sample);
+    let body = renderTemplate(cuerpo, sample);
+    if (current.eventType === "digest") body += DIGEST_PREVIEW_SECTIONS;
+    document.getElementById("preview-body").textContent = body;
   }
 
   async function load() {

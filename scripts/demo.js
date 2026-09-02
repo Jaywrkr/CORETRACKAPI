@@ -1,11 +1,11 @@
 // Demo NO productivo: corre la lógica real con datos simulados para
-// mostrar qué detecta y qué correo arma cada tipo de evento.
+// mostrar qué detecta y qué resumen diario arma para cada destinatario.
 // Uso: node scripts/demo.js
 import { detectEvents } from "../lib/detectEvents.js";
-import { buildTemplate } from "../lib/emailTemplates.js";
 import { resolveRecipients } from "../config/recipients.js";
 import { buildUserEmailMap, resolvePersonalEmails } from "../lib/resolvePersonal.js";
-import { OC_COLUMNS, HARDWARE_COLUMNS, USERS_COLUMNS } from "../config/glideSchema.js";
+import { groupEventsByRecipient, buildDigestEmail } from "../lib/digest.js";
+import { OC_COLUMNS, HARDWARE_COLUMNS, SOFTWARE_COLUMNS, USERS_COLUMNS } from "../config/glideSchema.js";
 
 function ocRow({ rowId, numeroOC, opi, estado, personal, correo0 }) {
   return {
@@ -31,6 +31,17 @@ function hwRow({ rowId, numeroOC, opi, producto }) {
   };
 }
 
+function swRow({ rowId, numeroOC, opi, producto }) {
+  return {
+    [SOFTWARE_COLUMNS.rowId]: rowId,
+    [SOFTWARE_COLUMNS.numeroOC]: numeroOC,
+    [SOFTWARE_COLUMNS.opi]: opi,
+    [SOFTWARE_COLUMNS.producto]: producto,
+    [SOFTWARE_COLUMNS.descripcion]: "Licencia",
+    [SOFTWARE_COLUMNS.serial]: "LIC-999",
+  };
+}
+
 const usersRows = [
   { [USERS_COLUMNS.nombre]: "Paola Reino", [USERS_COLUMNS.email]: "preino@coresolutions.com.ec" },
 ];
@@ -43,15 +54,27 @@ function runCase(titulo, { ocRows, hardwareRows = [], softwareRows = [], notifie
     console.log("-> No se detectó ningún evento (correctamente saltado).");
     return;
   }
-  for (const event of events) {
+
+  const eventsWithRecipients = events.map((event) => {
     const personalEmails = resolvePersonalEmails(event.payload.personalNames, userEmailMap);
     const recipients = resolveRecipients(event.eventType, [
       ...event.payload.correos,
       ...personalEmails,
     ]);
-    const { subject, html } = buildTemplate(event.eventType, event.payload);
-    console.log(`Evento: ${event.eventType} (itemRowId=${event.itemRowId}, cantidad=${event.cantidad})`);
-    console.log(`Destinatarios: ${recipients.join(", ") || "(ninguno)"}`);
+    return { ...event, recipients };
+  });
+
+  const byRecipient = groupEventsByRecipient(eventsWithRecipients);
+  console.log(`Eventos detectados: ${events.length} | Resúmenes a enviar: ${byRecipient.size}`);
+
+  if (byRecipient.size === 0) {
+    console.log("-> Ningún evento tuvo destinatario (no se envía nada, pero igual se registra en el log).");
+    return;
+  }
+
+  for (const [recipient, items] of byRecipient.entries()) {
+    const { subject, html } = buildDigestEmail(items);
+    console.log(`\n--- Resumen para: ${recipient} (${items.length} evento[s]) ---`);
     console.log(`Asunto: ${subject}`);
     console.log(`Cuerpo:${html}`);
   }
@@ -112,4 +135,22 @@ runCase("Progreso OPI: llega la última -> 3 de 3 (completo)", {
     ["oc1:nueva_oc", 1], ["oc2:nueva_oc", 1], ["oc3:nueva_oc", 1],
     ["opi:OPI 1100:opi_progreso", 2], // iba en "2 de 3"
   ]),
+});
+
+// --- CASO 6: día ocupado — el mismo vendedor tiene 2 OC nuevas, 2 hardware
+// y 2 software en la misma corrida -> UN solo resumen, no 6 correos sueltos.
+runCase("Día ocupado: mismo vendedor con varios eventos -> un solo resumen", {
+  ocRows: [
+    ocRow({ rowId: "oc10", numeroOC: "030-2026", opi: "PAC 1300", estado: "PENDIENTE", personal: "Paola Reino" }),
+    ocRow({ rowId: "oc11", numeroOC: "031-2026", opi: "PAC 1301", estado: "PENDIENTE", personal: "Paola Reino" }),
+  ],
+  hardwareRows: [
+    hwRow({ rowId: "hw10", numeroOC: "030-2026", opi: "PAC 1300", producto: "Switch Aruba 24p" }),
+    hwRow({ rowId: "hw11", numeroOC: "031-2026", opi: "PAC 1301", producto: "Servidor Lenovo SR250" }),
+  ],
+  softwareRows: [
+    swRow({ rowId: "sw10", numeroOC: "030-2026", opi: "PAC 1300", producto: "VMware vSphere" }),
+    swRow({ rowId: "sw11", numeroOC: "031-2026", opi: "PAC 1301", producto: "Veeam Backup" }),
+  ],
+  notifiedCounts: new Map(), // todo nuevo -> 6 eventos, 1 solo resumen
 });
