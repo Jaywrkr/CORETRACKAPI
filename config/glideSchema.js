@@ -5,23 +5,15 @@
 // "*SOFTWARE"). CONFIRMAR con el usuario antes de tomarlos como definitivos:
 // ver README > "Confirmaciones pendientes".
 
+// Tablas de negocio que se leen de Glide (solo lectura). El log de
+// notificaciones y las plantillas de correo NO viven en Glide: se guardan
+// como JSON en Vercel Blob (ver lib/notificationLog.js y lib/templates.js),
+// para no depender de crear/mantener tablas extra en la app de Glide.
 export const TABLES = {
   oc: process.env.GLIDE_TABLE_OC || "Comtrol de Ordenes de Compra Track",
   hardware: process.env.GLIDE_TABLE_HARDWARE || "*HARDWARE",
   software: process.env.GLIDE_TABLE_SOFTWARE || "*SOFTWARE",
   users: process.env.GLIDE_TABLE_USERS || "Users",
-  log: process.env.GLIDE_TABLE_LOG || "Notificaciones CoreTrack Log",
-  templates: process.env.GLIDE_TABLE_TEMPLATES || "Plantillas CoreTrack",
-};
-
-// Columnas de la tabla de plantillas de correo editable (ver README y
-// /admin). Una fila por EVENT_TYPES con Asunto/Cuerpo como texto libre con
-// placeholders {{campo}}.
-export const TEMPLATE_COLUMNS = {
-  rowId: "$rowID",
-  eventType: "EventType",
-  asunto: "Asunto",
-  cuerpo: "Cuerpo",
 };
 
 // Columnas de la tabla de Órdenes de Compra (OC).
@@ -80,16 +72,6 @@ export const SOFTWARE_COLUMNS = {
   descripcion: "PRODUCTO/DESCRIPCION",
   serial: "PRODUCTO/SERIAL",
   statusDocumentos: "Status Documentos",
-};
-
-// Columnas de la tabla de log de notificaciones (a crear en Glide, ver README).
-export const LOG_COLUMNS = {
-  rowId: "$rowID",
-  itemRowId: "ItemRowID", // rowID del elemento notificado (OC, item, o "opi:<OPI>")
-  eventType: "EventType", // uno de EVENT_TYPES
-  fecha: "Fecha", // date-time de cuándo se notificó
-  cantidad: "Cantidad", // conteo notificado (usado por OPI_PROGRESO; 1 para el resto)
-  detalle: "Detalle", // texto libre para trazabilidad
 };
 
 export const EVENT_TYPES = {

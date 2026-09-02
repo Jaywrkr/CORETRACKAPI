@@ -34,7 +34,8 @@ lógica** a partir de las columnas de datos reales (agrupando filas de OC por
 esas columnas calculadas.
 
 Para no re-notificar lo mismo cada día, cada evento notificado se registra en
-una tabla de "log" dentro de la misma app de Glide.
+un archivo JSON en **Vercel Blob** (almacenamiento propio del proyecto, no
+una tabla de Glide — ver más abajo).
 
 ## ✏️ Editar los textos de los correos sin tocar código
 
@@ -42,9 +43,18 @@ Entrando a `https://<tu-proyecto>.vercel.app/admin` (pide usuario/contraseña,
 ver `ADMIN_USER`/`ADMIN_PASSWORD`) hay un panel donde se edita el **Asunto**
 y el **Cuerpo** de cada tipo de evento, con vista previa en vivo y botones
 para insertar los placeholders disponibles (`{{numeroOC}}`, `{{proveedor}}`,
-etc). Los cambios se guardan en la tabla `Plantillas CoreTrack` de Glide y
-los toma la próxima corrida del cron — sin redeploy, sin git, sin pedirle
-nada a nadie.
+etc). Los cambios se guardan como JSON en Vercel Blob y los toma la próxima
+corrida del cron — sin redeploy, sin git, sin pedirle nada a nadie.
+
+## 💾 Dónde vive cada dato
+
+- **Glide** (solo lectura): OC, `*HARDWARE`, `*SOFTWARE`, `Users` — los datos
+  de negocio reales de CoreTrack.
+- **Vercel Blob** (propio de este proyecto, como un par de archivos JSON):
+  el log de notificaciones (`coretrack/notification-log.json`) y las
+  plantillas de correo (`coretrack/templates.json`). No requiere crear
+  tablas nuevas en Glide ni configurar una base de datos — es solo
+  almacenamiento de archivos que Vercel gestiona.
 
 ## Estructura
 
@@ -53,9 +63,10 @@ api/check-coretrack.js     Endpoint que dispara el cron (GET)
 api/admin.js                 Página HTML del panel de plantillas (protegida)
 api/admin-templates.js      GET/POST de las plantillas (protegida)
 lib/glideClient.js          Cliente HTTP mínimo de la API de Tablas de Glide
+lib/blobStore.js              Lectura/escritura de JSON en Vercel Blob
 lib/detectEvents.js         Lógica pura de diff/detección de eventos (testeable)
-lib/notificationLog.js      Lectura/escritura de la tabla de log en Glide
-lib/templates.js             Carga/guarda plantillas en Glide + motor {{placeholder}}
+lib/notificationLog.js      Log de notificaciones (JSON en Vercel Blob)
+lib/templates.js             Carga/guarda plantillas (JSON en Vercel Blob) + motor {{placeholder}}
 lib/mailer.js                Envío de correo vía Gmail API
 lib/emailTemplates.js       Arma asunto/HTML final combinando plantilla + payload
 lib/resolvePersonal.js      Resuelve nombres de Personal -> email vía tabla Users
@@ -118,30 +129,15 @@ poblados. Esto es más confiable que depender de la cadena de lookups nativa.
 
 Pendiente de confirmar:
 
-1. **Tabla de log de notificaciones**: no existe todavía. Hay que crearla a
-   mano en el editor de Glide (la API de Glide no crea tablas nuevas, solo
-   agrega filas a tablas existentes). Crear una tabla llamada
-   `Notificaciones CoreTrack Log` con estas columnas:
-   - `ItemRowID` (texto)
-   - `EventType` (texto)
-   - `Fecha` (fecha y hora)
-   - `Cantidad` (número) — conteo notificado; usado por `opi_progreso` para
-     saber si subió desde la última vez
-   - `Detalle` (texto)
-2. **Tabla de plantillas**: tampoco existe todavía. Crear
-   `Plantillas CoreTrack` con columnas `EventType` (texto), `Asunto` (texto)
-   y `Cuerpo` (texto largo). Se puede dejar vacía — el proyecto arranca con
-   plantillas por defecto y las va creando/actualizando solo la primera vez
-   que se guarda algo desde `/admin`.
-3. **Nombres de columna reales de `Users`**: asumí `Name` y `Email` (así se
+1. **Nombres de columna reales de `Users`**: asumí `Name` y `Email` (así se
    ven en el Data Editor) — confirmar que esos son los nombres exactos que
    expone la API una vez habilitada ahí "Enable Public API".
-4. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
+2. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
    `jcjaramillov@coresolutions.com.ec` y `asistenteadm@coresolutions.com.ec`
    (To/Cc fijos) además del destinatario resuelto. Si querés replicar eso,
    cargalos en `NOTIFY_EXTRA_NUEVA_OC`, `NOTIFY_EXTRA_ITEM_AGREGADO` y
    `NOTIFY_EXTRA_OPI_PROGRESO` en `.env`.
-5. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
+3. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
    `nueva_oc` contra su lógica real (en curso).
 
 Estos cambios son pequeños y acotados a `config/glideSchema.js` y
@@ -153,26 +149,39 @@ exactos.
 ### 1. Habilitar la API de Glide en las tablas
 
 En el editor de Glide, para cada tabla que se vaya a consultar (OC,
-*HARDWARE, *SOFTWARE, Users, la nueva tabla de log, y la nueva tabla de
-plantillas): abrir la tabla → menú "..." → **Enable Public API**. Anotar el
-nombre exacto que Glide use ahí (puede diferir del nombre visible en la
-pestaña) y usarlo en las variables `GLIDE_TABLE_*`.
+*HARDWARE, *SOFTWARE, Users): abrir la tabla → menú "..." →
+**Enable Public API**. Anotar el nombre exacto que Glide use ahí (puede
+diferir del nombre visible en la pestaña) y usarlo en las variables
+`GLIDE_TABLE_*`.
 
 Obtener el **token de API** y el **App ID** en Settings → Developer → API.
 
-### 2. Variables de entorno
+### 2. Crear el Blob Store en Vercel
+
+En el dashboard de Vercel: proyecto → pestaña **Storage** → **Create
+Database** → **Blob**. Al conectarlo al proyecto, Vercel agrega solo la
+variable `BLOB_READ_WRITE_TOKEN` — no hace falta crear nada más ni definir
+un esquema. Ahí es donde se guardan el log de notificaciones y las
+plantillas de correo.
+
+Para probar localmente, copiar ese mismo token a `.env`
+(`vercel env pull .env` si tenés la CLI de Vercel instalada, o copiarlo a
+mano desde Storage → tu Blob Store → `.env.local` tab).
+
+### 3. Variables de entorno
 
 Copiar `.env.example` a `.env` (local) y cargar las mismas en Vercel
 (Project Settings → Environment Variables):
 
 - `GLIDE_API_TOKEN`, `GLIDE_APP_ID`
-- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`, `GLIDE_TABLE_LOG`, `GLIDE_TABLE_TEMPLATES`
+- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`
+- `BLOB_READ_WRITE_TOKEN` (la agrega Vercel solo al conectar el Blob Store del paso 2)
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER`
 - `NOTIFY_EXTRA_*` (opcional)
 - `CRON_SECRET` (recomendado, ver abajo)
 - `ADMIN_USER`, `ADMIN_PASSWORD` (para entrar a `/admin` a editar los textos de los correos)
 
-### 3. Credenciales de Gmail API
+### 4. Credenciales de Gmail API
 
 1. En [Google Cloud Console](https://console.cloud.google.com/), crear (o
    reusar) un proyecto y habilitar **Gmail API**.
@@ -187,7 +196,7 @@ Copiar `.env.example` a `.env` (local) y cargar las mismas en Vercel
 4. Guardar `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` y
    la dirección remitente en `GMAIL_SENDER`.
 
-### 4. Probar localmente
+### 5. Probar localmente
 
 ```bash
 npm install
@@ -198,12 +207,12 @@ Esto corre `runCheck()` una vez con las variables de `.env`, sin necesidad de
 desplegar. Revisar los logs en consola: qué se detectó, qué se notificó y qué
 se saltó por ya estar en el log.
 
-### 5. Deploy en Vercel
+### 6. Deploy en Vercel
 
 1. Conectar el repo de GitHub `Jaywrkr/CORETRACKAPI` en Vercel (Import
    Project) — esto habilita deploy automático en cada push a la rama
    configurada como producción.
-2. Cargar las variables de entorno del paso 2 en el proyecto de Vercel.
+2. Cargar las variables de entorno del paso 3 en el proyecto de Vercel.
 3. Definir `CRON_SECRET` (cualquier string random) como variable de entorno
    **en Vercel**: Vercel firma automáticamente las invocaciones de sus
    cron jobs con `Authorization: Bearer <CRON_SECRET>`, y el endpoint lo
@@ -220,7 +229,7 @@ se saltó por ya estar en el log.
    leer el horario del cron desde una variable de entorno, así que un
    cambio de hora requiere tocar este archivo.
 
-### 6. Verificar
+### 7. Verificar
 
 Después del deploy, se puede disparar manualmente con:
 
