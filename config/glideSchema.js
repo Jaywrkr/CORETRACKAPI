@@ -9,6 +9,7 @@ export const TABLES = {
   oc: process.env.GLIDE_TABLE_OC || "Comtrol de Ordenes de Compra Track",
   hardware: process.env.GLIDE_TABLE_HARDWARE || "*HARDWARE",
   software: process.env.GLIDE_TABLE_SOFTWARE || "*SOFTWARE",
+  users: process.env.GLIDE_TABLE_USERS || "Users",
   log: process.env.GLIDE_TABLE_LOG || "Notificaciones CoreTrack Log",
 };
 
@@ -21,9 +22,22 @@ export const OC_COLUMNS = {
   opi: "OPI",
   fecha: "Fecha",
   estado: "Estado",
+  personal: "Personal",
+  personal1: "Personal 1",
+  personal2: "Personal 2",
+  // Correo 0/1/2 son calculados por un workflow nativo de Glide (lookup de
+  // Personal -> tabla Users) que no corre de forma confiable. Se dejan como
+  // respaldo, pero la fuente principal de destinatarios es resolver
+  // Personal/Personal 1/Personal 2 contra USERS_COLUMNS nosotros mismos.
   correo0: "Correo 0",
   correo1: "Correo 1",
   correo2: "Correo 2",
+};
+
+// Columnas de la tabla "Users" (directorio de personal, nombre -> email).
+export const USERS_COLUMNS = {
+  nombre: "Name",
+  email: "Email",
 };
 
 // Valores de OC_COLUMNS.estado que cuentan como "recibida" para el progreso

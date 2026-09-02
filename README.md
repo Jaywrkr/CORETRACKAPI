@@ -54,8 +54,12 @@ vercel.json                  Configuración del cron
 
 La lógica de detección (`detectEvents.js`) está separada del envío de correo
 (`mailer.js`) y de la persistencia (`notificationLog.js`) a propósito, para
-poder probar cada parte por separado. Hay un test simple sin dependencias en
-`lib/detectEvents.test.js` — correrlo con `node lib/detectEvents.test.js`.
+poder probar cada parte por separado. Hay tests simples sin dependencias:
+
+```bash
+node lib/detectEvents.test.js
+node lib/resolvePersonal.test.js
+```
 
 ## ✅ Confirmado / ⚠️ Pendiente
 
@@ -79,6 +83,22 @@ conectado (`glide-core-mcp`). Confirmado hasta ahora:
   `COMPLETA ORDEN DE COMPRE`), que no estaban enviando el correo de forma
   confiable — de ahí este proyecto.
 
+### 📧 Destinatarios: por qué se resuelven vía la tabla `Users`
+
+Los workflows nativos calculan `Correo 0/1/2` en la OC a partir de un lookup
+sobre el nombre en `Personal`/`Personal 1`/`Personal 2` — pero esa cadena de
+lookups depende de que el mismo workflow (roto) corra primero, así que esas
+columnas pueden estar vacías. Además, se detectó que la tabla que se
+intentaba usar para resolver nombre→email (`PERSONAL GENERAL`) tiene la
+columna de correo completamente vacía.
+
+En cambio, la tabla **`Users`** (misma app que OC/`*HARDWARE`/`*SOFTWARE`)
+sí tiene el mapeo `Name` → `Email` completo y real. Este proyecto resuelve
+los destinatarios así: toma `Personal`/`Personal 1`/`Personal 2` de la(s)
+OC involucradas, los cruza contra `Users` (`lib/resolvePersonal.js`), y usa
+esos emails — con `Correo 0/1/2` como respaldo adicional si están
+poblados. Esto es más confiable que depender de la cadena de lookups nativa.
+
 Pendiente de confirmar:
 
 1. **Tabla de log de notificaciones**: no existe todavía. Hay que crearla a
@@ -91,16 +111,16 @@ Pendiente de confirmar:
    - `Cantidad` (número) — conteo notificado; usado por `opi_progreso` para
      saber si subió desde la última vez
    - `Detalle` (texto)
-2. **Destinatarios**: por ahora tomo los correos de las columnas `Correo
-   0/1/2` de la(s) fila(s) de OC involucradas. Además, `config/recipients.js`
-   permite sumar destinatarios fijos por tipo de evento vía variables de
-   entorno (`NOTIFY_EXTRA_*`). Los workflows nativos usaban destinatarios
-   fijos (`jcjaramillov@coresolutions.com.ec`, `asistenteadm@coresolutions.com.ec`)
-   más un lookup de correo — cargalos en `NOTIFY_EXTRA_*` si querés
-   replicarlos exactamente.
-3. Revisar los otros 3 workflows (`CORREO OC CREADA`, `CORREO NUEVA ORDEN
-   HW`, `CORREO NUEVA ORDEN SW`) para terminar de validar `nueva_oc` e
-   `item_agregado` contra su lógica real (en curso).
+2. **Nombres de columna reales de `Users`**: asumí `Name` y `Email` (así se
+   ven en el Data Editor) — confirmar que esos son los nombres exactos que
+   expone la API una vez habilitada ahí "Enable Public API".
+3. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
+   `jcjaramillov@coresolutions.com.ec` y `asistenteadm@coresolutions.com.ec`
+   (To/Cc fijos) además del destinatario resuelto. Si querés replicar eso,
+   cargalos en `NOTIFY_EXTRA_NUEVA_OC`, `NOTIFY_EXTRA_ITEM_AGREGADO` y
+   `NOTIFY_EXTRA_OPI_PROGRESO` en `.env`.
+4. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
+   `nueva_oc` contra su lógica real (en curso).
 
 Estos cambios son pequeños y acotados a `config/glideSchema.js` y
 `lib/detectEvents.js` — el resto del proyecto no depende de los nombres
@@ -111,10 +131,10 @@ exactos.
 ### 1. Habilitar la API de Glide en las tablas
 
 En el editor de Glide, para cada tabla que se vaya a consultar (OC,
-*HARDWARE, *SOFTWARE, y la nueva tabla de log): abrir la tabla → menú "..."
-→ **Enable Public API**. Anotar el nombre exacto que Glide use ahí (puede
-diferir del nombre visible en la pestaña) y usarlo en las variables
-`GLIDE_TABLE_*`.
+*HARDWARE, *SOFTWARE, Users, y la nueva tabla de log): abrir la tabla →
+menú "..." → **Enable Public API**. Anotar el nombre exacto que Glide use
+ahí (puede diferir del nombre visible en la pestaña) y usarlo en las
+variables `GLIDE_TABLE_*`.
 
 Obtener el **token de API** y el **App ID** en Settings → Developer → API.
 
@@ -124,7 +144,7 @@ Copiar `.env.example` a `.env` (local) y cargar las mismas en Vercel
 (Project Settings → Environment Variables):
 
 - `GLIDE_API_TOKEN`, `GLIDE_APP_ID`
-- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_LOG`
+- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`, `GLIDE_TABLE_LOG`
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER`
 - `NOTIFY_EXTRA_*` (opcional)
 - `CRON_SECRET` (recomendado, ver abajo)
