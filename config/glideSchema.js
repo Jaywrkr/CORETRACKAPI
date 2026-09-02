@@ -11,6 +11,17 @@ export const TABLES = {
   software: process.env.GLIDE_TABLE_SOFTWARE || "*SOFTWARE",
   users: process.env.GLIDE_TABLE_USERS || "Users",
   log: process.env.GLIDE_TABLE_LOG || "Notificaciones CoreTrack Log",
+  templates: process.env.GLIDE_TABLE_TEMPLATES || "Plantillas CoreTrack",
+};
+
+// Columnas de la tabla de plantillas de correo editable (ver README y
+// /admin). Una fila por EVENT_TYPES con Asunto/Cuerpo como texto libre con
+// placeholders {{campo}}.
+export const TEMPLATE_COLUMNS = {
+  rowId: "$rowID",
+  eventType: "EventType",
+  asunto: "Asunto",
+  cuerpo: "Cuerpo",
 };
 
 // Columnas de la tabla de Órdenes de Compra (OC).

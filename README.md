@@ -36,19 +36,35 @@ esas columnas calculadas.
 Para no re-notificar lo mismo cada día, cada evento notificado se registra en
 una tabla de "log" dentro de la misma app de Glide.
 
+## ✏️ Editar los textos de los correos sin tocar código
+
+Entrando a `https://<tu-proyecto>.vercel.app/admin` (pide usuario/contraseña,
+ver `ADMIN_USER`/`ADMIN_PASSWORD`) hay un panel donde se edita el **Asunto**
+y el **Cuerpo** de cada tipo de evento, con vista previa en vivo y botones
+para insertar los placeholders disponibles (`{{numeroOC}}`, `{{proveedor}}`,
+etc). Los cambios se guardan en la tabla `Plantillas CoreTrack` de Glide y
+los toma la próxima corrida del cron — sin redeploy, sin git, sin pedirle
+nada a nadie.
+
 ## Estructura
 
 ```
 api/check-coretrack.js     Endpoint que dispara el cron (GET)
+api/admin.js                 Página HTML del panel de plantillas (protegida)
+api/admin-templates.js      GET/POST de las plantillas (protegida)
 lib/glideClient.js          Cliente HTTP mínimo de la API de Tablas de Glide
 lib/detectEvents.js         Lógica pura de diff/detección de eventos (testeable)
 lib/notificationLog.js      Lectura/escritura de la tabla de log en Glide
+lib/templates.js             Carga/guarda plantillas en Glide + motor {{placeholder}}
 lib/mailer.js                Envío de correo vía Gmail API
-lib/emailTemplates.js       Asunto/HTML de cada tipo de evento
+lib/emailTemplates.js       Arma asunto/HTML final combinando plantilla + payload
+lib/resolvePersonal.js      Resuelve nombres de Personal -> email vía tabla Users
+lib/adminAuth.js             HTTP Basic Auth para /admin y /api/admin-templates
 lib/runCheck.js              Orquesta: fetch -> detect -> notify -> log
 config/glideSchema.js       Nombres de tablas y columnas de Glide
 config/recipients.js        Mapeo evento -> destinatarios adicionales
 scripts/run-local.js        Corre runCheck() localmente con .env
+scripts/demo.js              Corre la lógica con datos simulados (ver consola)
 vercel.json                  Configuración del cron
 ```
 
@@ -59,6 +75,7 @@ poder probar cada parte por separado. Hay tests simples sin dependencias:
 ```bash
 node lib/detectEvents.test.js
 node lib/resolvePersonal.test.js
+node lib/templates.test.js
 ```
 
 ## ✅ Confirmado / ⚠️ Pendiente
@@ -111,15 +128,20 @@ Pendiente de confirmar:
    - `Cantidad` (número) — conteo notificado; usado por `opi_progreso` para
      saber si subió desde la última vez
    - `Detalle` (texto)
-2. **Nombres de columna reales de `Users`**: asumí `Name` y `Email` (así se
+2. **Tabla de plantillas**: tampoco existe todavía. Crear
+   `Plantillas CoreTrack` con columnas `EventType` (texto), `Asunto` (texto)
+   y `Cuerpo` (texto largo). Se puede dejar vacía — el proyecto arranca con
+   plantillas por defecto y las va creando/actualizando solo la primera vez
+   que se guarda algo desde `/admin`.
+3. **Nombres de columna reales de `Users`**: asumí `Name` y `Email` (así se
    ven en el Data Editor) — confirmar que esos son los nombres exactos que
    expone la API una vez habilitada ahí "Enable Public API".
-3. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
+4. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
    `jcjaramillov@coresolutions.com.ec` y `asistenteadm@coresolutions.com.ec`
    (To/Cc fijos) además del destinatario resuelto. Si querés replicar eso,
    cargalos en `NOTIFY_EXTRA_NUEVA_OC`, `NOTIFY_EXTRA_ITEM_AGREGADO` y
    `NOTIFY_EXTRA_OPI_PROGRESO` en `.env`.
-4. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
+5. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
    `nueva_oc` contra su lógica real (en curso).
 
 Estos cambios son pequeños y acotados a `config/glideSchema.js` y
@@ -131,10 +153,10 @@ exactos.
 ### 1. Habilitar la API de Glide en las tablas
 
 En el editor de Glide, para cada tabla que se vaya a consultar (OC,
-*HARDWARE, *SOFTWARE, Users, y la nueva tabla de log): abrir la tabla →
-menú "..." → **Enable Public API**. Anotar el nombre exacto que Glide use
-ahí (puede diferir del nombre visible en la pestaña) y usarlo en las
-variables `GLIDE_TABLE_*`.
+*HARDWARE, *SOFTWARE, Users, la nueva tabla de log, y la nueva tabla de
+plantillas): abrir la tabla → menú "..." → **Enable Public API**. Anotar el
+nombre exacto que Glide use ahí (puede diferir del nombre visible en la
+pestaña) y usarlo en las variables `GLIDE_TABLE_*`.
 
 Obtener el **token de API** y el **App ID** en Settings → Developer → API.
 
@@ -144,10 +166,11 @@ Copiar `.env.example` a `.env` (local) y cargar las mismas en Vercel
 (Project Settings → Environment Variables):
 
 - `GLIDE_API_TOKEN`, `GLIDE_APP_ID`
-- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`, `GLIDE_TABLE_LOG`
+- `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`, `GLIDE_TABLE_LOG`, `GLIDE_TABLE_TEMPLATES`
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER`
 - `NOTIFY_EXTRA_*` (opcional)
 - `CRON_SECRET` (recomendado, ver abajo)
+- `ADMIN_USER`, `ADMIN_PASSWORD` (para entrar a `/admin` a editar los textos de los correos)
 
 ### 3. Credenciales de Gmail API
 
