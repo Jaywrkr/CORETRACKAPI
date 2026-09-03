@@ -49,8 +49,8 @@ export const USERS_COLUMNS = {
 // Ajustar si hay otros valores terminales.
 export const OC_ESTADOS_RECIBIDA = ["RECIBIDO"];
 
-// Columnas comunes a *HARDWARE y *SOFTWARE, usadas solo para detectar el
-// evento ITEM_AGREGADO. OJO: el vínculo a la OC es por texto (no relación),
+// Columnas comunes a *HARDWARE y *SOFTWARE, usadas solo para detectar los
+// eventos HW_AGREGADO/SW_AGREGADO. OJO: el vínculo a la OC es por texto (no relación),
 // así que el match se hace por el número de OC. El progreso de "recibido"
 // se mide a nivel de OC (ver OC_ESTADOS_RECIBIDA), no con estas columnas de
 // status por-item.
@@ -76,7 +76,8 @@ export const SOFTWARE_COLUMNS = {
 
 export const EVENT_TYPES = {
   NUEVA_OC: "nueva_oc",
-  ITEM_AGREGADO: "item_agregado",
+  HW_AGREGADO: "hw_agregado",
+  SW_AGREGADO: "sw_agregado",
   // Progreso de recepción por OPI: agrupa las OC que comparten el mismo OPI
   // (replica la relación nativa "Relación por PPR" de Glide, que la API de
   // Tablas no expone) y notifica cada vez que sube la cantidad de OC con

@@ -4,7 +4,7 @@
 import { detectEvents } from "../lib/detectEvents.js";
 import { resolveRecipients } from "../config/recipients.js";
 import { buildUserEmailMap, resolvePersonalEmails } from "../lib/resolvePersonal.js";
-import { groupEventsByRecipient, buildDigestEmail } from "../lib/digest.js";
+import { groupEventsByRecipientAndType, buildTypeDigestEmail } from "../lib/digest.js";
 import { OC_COLUMNS, HARDWARE_COLUMNS, SOFTWARE_COLUMNS, USERS_COLUMNS } from "../config/glideSchema.js";
 
 function ocRow({ rowId, numeroOC, opi, estado, personal, correo0 }) {
@@ -64,17 +64,17 @@ function runCase(titulo, { ocRows, hardwareRows = [], softwareRows = [], notifie
     return { ...event, recipients };
   });
 
-  const byRecipient = groupEventsByRecipient(eventsWithRecipients);
-  console.log(`Eventos detectados: ${events.length} | Resúmenes a enviar: ${byRecipient.size}`);
+  const groups = groupEventsByRecipientAndType(eventsWithRecipients);
+  console.log(`Eventos detectados: ${events.length} | Correos a enviar: ${groups.size}`);
 
-  if (byRecipient.size === 0) {
+  if (groups.size === 0) {
     console.log("-> Ningún evento tuvo destinatario (no se envía nada, pero igual se registra en el log).");
     return;
   }
 
-  for (const [recipient, items] of byRecipient.entries()) {
-    const { subject, html } = buildDigestEmail(items);
-    console.log(`\n--- Resumen para: ${recipient} (${items.length} evento[s]) ---`);
+  for (const { recipient, eventType, items } of groups.values()) {
+    const { subject, html } = buildTypeDigestEmail(eventType, items);
+    console.log(`\n--- ${eventType} para: ${recipient} (${items.length} evento[s]) ---`);
     console.log(`Asunto: ${subject}`);
     console.log(`Cuerpo:${html}`);
   }
@@ -138,8 +138,8 @@ runCase("Progreso OPI: llega la última -> 3 de 3 (completo)", {
 });
 
 // --- CASO 6: día ocupado — el mismo vendedor tiene 2 OC nuevas, 2 hardware
-// y 2 software en la misma corrida -> UN solo resumen, no 6 correos sueltos.
-runCase("Día ocupado: mismo vendedor con varios eventos -> un solo resumen", {
+// y 2 software en la misma corrida -> 3 correos (uno por tipo), no 6 sueltos.
+runCase("Día ocupado: mismo vendedor con varios eventos -> 3 correos, uno por tipo", {
   ocRows: [
     ocRow({ rowId: "oc10", numeroOC: "030-2026", opi: "PAC 1300", estado: "PENDIENTE", personal: "Paola Reino" }),
     ocRow({ rowId: "oc11", numeroOC: "031-2026", opi: "PAC 1301", estado: "PENDIENTE", personal: "Paola Reino" }),

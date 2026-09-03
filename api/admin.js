@@ -90,25 +90,28 @@ const PAGE = `<!doctype html>
   .status { font-size: 13px; color: #9aa0ac; }
   .status.ok { color: #4ade80; }
   .status.err { color: #f87171; }
+  .hint { font-size: 12px; color: #9aa0ac; margin: -4px 0 0; }
 </style>
 </head>
 <body>
 <header>
   <h1>Plantillas de correo — CoreTrack</h1>
-  <p>Cada destinatario recibe UN resumen diario con todos sus eventos del día, no un correo por evento. "digest" es el encabezado del resumen; los demás tabs son cómo se ve cada línea dentro de él. Los cambios aplican en la próxima corrida del cron, sin redeploy.</p>
+  <p>Hay 4 correos posibles por día por destinatario, uno por tipo (OC nueva, Hardware, Software, Avances de OC), cada uno agrupando todos los eventos de ese tipo — no un correo por evento suelto. El tab "digest" es el sobre común a los 4 (asunto/intro); los demás tabs son cómo se ve cada línea dentro de ese correo. Los cambios aplican en la próxima corrida del cron, sin redeploy.</p>
 </header>
 <main>
   <div class="tabs" id="tabs"></div>
   <div class="card">
     <div>
-      <label for="asunto">Asunto</label>
+      <label for="asunto" id="asunto-label">Asunto</label>
       <input type="text" id="asunto" />
+      <div class="placeholders" id="placeholders-asunto"></div>
     </div>
-    <div>
-      <label for="cuerpo">Cuerpo</label>
+    <div id="cuerpo-section">
+      <label for="cuerpo">Cuerpo (intro del correo)</label>
       <textarea id="cuerpo"></textarea>
-      <div class="placeholders" id="placeholders"></div>
+      <div class="placeholders" id="placeholders-cuerpo"></div>
     </div>
+    <p class="hint" id="cuerpo-hint" hidden>Este tipo de evento no tiene "Cuerpo" propio — solo se usa como una línea dentro del correo de resumen (ver "digest"), con el texto de "Asunto".</p>
     <div class="row">
       <div>
         <label>Vista previa — Asunto</label>
@@ -127,17 +130,30 @@ const PAGE = `<!doctype html>
 </main>
 <script>
   const SAMPLE_PAYLOADS = {
-    digest: { fecha: "2 de septiembre de 2026", totalEventos: 8 },
-    nueva_oc: { numeroOC: "011-2026", proveedor: "NEXSYS", cliente: "MUTUALISTA AZUAY", opi: "PAC 1215" },
-    item_agregado: { numeroOC: "011-2026", producto: "Switch Aruba 24p", descripcion: "Switch de red", serial: "SN-12345", sourceType: "hardware" },
-    opi_progreso: { opi: "OPI 1100", recibidas: 2, total: 3, estado: "en progreso" },
+    nueva_oc: [
+      { numeroOC: "011-2026", proveedor: "NEXSYS", cliente: "MUTUALISTA AZUAY", opi: "PAC 1215" },
+      { numeroOC: "022-2026", proveedor: "INACORP", cliente: "COOP JARDÍN AZUAYO", opi: "OPI 1176" },
+    ],
+    hw_agregado: [
+      { numeroOC: "011-2026", producto: "Switch Aruba 24p", descripcion: "Switch de red", serial: "SN-12345" },
+      { numeroOC: "022-2026", producto: "Servidor Lenovo SR250", descripcion: "Servidor", serial: "SN-67890" },
+    ],
+    sw_agregado: [
+      { numeroOC: "011-2026", producto: "VMware vSphere", descripcion: "Licencia", serial: "LIC-111" },
+      { numeroOC: "022-2026", producto: "Veeam Backup", descripcion: "Licencia", serial: "LIC-222" },
+    ],
+    opi_progreso: [
+      { opi: "OPI 1100", recibidas: 2, total: 3, estado: "en progreso" },
+      { opi: "OPI 1215", recibidas: 3, total: 3, estado: "completo" },
+    ],
   };
 
-  const DIGEST_PREVIEW_SECTIONS =
-    "\\n\\nNuevas Órdenes de Compra (2):\\n• Nueva OC registrada: 011-2026\\n• Nueva OC registrada: 022-2026\\n\\n" +
-    "Items agregados (4):\\n• Item agregado a OC 011-2026\\n• Item agregado a OC 011-2026\\n• Item agregado a OC 022-2026\\n• Item agregado a OC 022-2026\\n\\n" +
-    "Progreso de recepción por OPI (2):\\n• OPI OPI 1100: llegaron 2 de 3\\n• OPI OPI 1215: llegaron 3 de 3\\n\\n" +
-    "(las líneas de cada sección usan el Asunto de esa pestaña)";
+  const EVENT_TYPE_LABELS = {
+    nueva_oc: "Nuevas Órdenes de Compra",
+    hw_agregado: "Hardware agregado",
+    sw_agregado: "Software agregado",
+    opi_progreso: "Avances de Órdenes de Compra",
+  };
 
   let items = [];
   let current = null;
@@ -149,26 +165,40 @@ const PAGE = `<!doctype html>
     });
   }
 
+  function attachChipHandlers(containerId, fieldId) {
+    document.querySelectorAll("#" + containerId + " .chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const field = document.getElementById(fieldId);
+        const insert = "{{" + chip.dataset.p + "}}";
+        const pos = field.selectionStart || field.value.length;
+        field.value = field.value.slice(0, pos) + insert + field.value.slice(pos);
+        field.focus();
+        updatePreview();
+      });
+    });
+  }
+
   function selectTab(eventType) {
     current = items.find((i) => i.eventType === eventType);
     document.querySelectorAll(".tab").forEach((el) => {
       el.classList.toggle("active", el.dataset.event === eventType);
     });
+    const isDigest = eventType === "digest";
+    document.getElementById("asunto-label").textContent = isDigest ? "Asunto" : "Línea del correo (una por evento)";
+    document.getElementById("cuerpo-section").hidden = !isDigest;
+    document.getElementById("cuerpo-hint").hidden = isDigest;
+
     document.getElementById("asunto").value = current.asunto;
     document.getElementById("cuerpo").value = current.cuerpo;
-    document.getElementById("placeholders").innerHTML = current.placeholders
+
+    const chips = current.placeholders
       .map((p) => \`<span class="chip" data-p="\${p}">{{\${p}}}</span>\`)
       .join("");
-    document.querySelectorAll(".chip").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        const textarea = document.getElementById("cuerpo");
-        const insert = "{{" + chip.dataset.p + "}}";
-        const pos = textarea.selectionStart || textarea.value.length;
-        textarea.value = textarea.value.slice(0, pos) + insert + textarea.value.slice(pos);
-        textarea.focus();
-        updatePreview();
-      });
-    });
+    document.getElementById("placeholders-asunto").innerHTML = chips;
+    document.getElementById("placeholders-cuerpo").innerHTML = chips;
+    attachChipHandlers("placeholders-asunto", "asunto");
+    attachChipHandlers("placeholders-cuerpo", "cuerpo");
+
     updatePreview();
     document.getElementById("status").textContent = "";
   }
@@ -176,11 +206,28 @@ const PAGE = `<!doctype html>
   function updatePreview() {
     const asunto = document.getElementById("asunto").value;
     const cuerpo = document.getElementById("cuerpo").value;
-    const sample = SAMPLE_PAYLOADS[current.eventType] || {};
-    document.getElementById("preview-subject").textContent = renderTemplate(asunto, sample);
-    let body = renderTemplate(cuerpo, sample);
-    if (current.eventType === "digest") body += DIGEST_PREVIEW_SECTIONS;
-    document.getElementById("preview-body").textContent = body;
+    const digestTemplate = items.find((i) => i.eventType === "digest") || { asunto: "", cuerpo: "" };
+
+    if (current.eventType === "digest") {
+      // El tab "digest" se previsualiza solo (es el sobre compartido por los 4 tipos).
+      const sample = { tipo: "Nuevas Órdenes de Compra", total: 2, fecha: "2 de septiembre de 2026" };
+      document.getElementById("preview-subject").textContent = renderTemplate(asunto, sample);
+      document.getElementById("preview-body").textContent = renderTemplate(cuerpo, sample);
+      return;
+    }
+
+    // Para un tab de evento, la vista previa arma el correo COMPLETO tal
+    // como saldría: sobre "digest" (con {{tipo}}/{{total}} de este tipo) +
+    // 2 líneas de ejemplo usando el Asunto de este tab.
+    const samples = SAMPLE_PAYLOADS[current.eventType] || [{}];
+    const tipo = EVENT_TYPE_LABELS[current.eventType] || current.eventType;
+    const digestVars = { tipo, total: samples.length, fecha: "2 de septiembre de 2026" };
+    const subject = renderTemplate(digestTemplate.asunto, digestVars);
+    const intro = renderTemplate(digestTemplate.cuerpo, digestVars);
+    const lines = samples.map((s) => "• " + renderTemplate(asunto, s)).join("\\n");
+
+    document.getElementById("preview-subject").textContent = subject;
+    document.getElementById("preview-body").textContent = intro + "\\n\\n" + lines;
   }
 
   async function load() {

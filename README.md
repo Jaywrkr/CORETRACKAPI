@@ -3,11 +3,12 @@
 Cron serverless en Vercel que monitorea eventos de **CoreTrack** (app de Glide)
 y notifica por correo (Gmail API), ya que Glide no ofrece webhooks salientes.
 
-Detecta tres tipos de evento:
+Detecta cuatro tipos de evento, cada uno con su propio correo:
 
 - **Nueva OC registrada**
-- **Item (hardware o software) agregado a una OC existente**
-- **Progreso de recepción por OPI**: un mismo OPI puede abarcar varias OC
+- **Hardware agregado** a una OC existente
+- **Software agregado** a una OC existente
+- **Avances de Órdenes de Compra**: un mismo OPI puede abarcar varias OC
   (relación nativa "Relación por PPR" en Glide, entre filas de la propia
   tabla de OC que comparten el mismo `OPI`). Notifica **cada vez que sube**
   la cantidad de OC con `Estado = RECIBIDO` sobre el total de OC del grupo
@@ -15,22 +16,24 @@ Detecta tres tipos de evento:
   el rollup `Total Recibidos PPR` / `Total Filas PPR` que Glide calcula
   puertas adentro pero no expone por API (ver más abajo).
 
-Estos mapean a los 4 workflows nativos de Glide que ya existían
-(`CORREO OC CREADA`, `CORREO NUEVA ORDEN HW/SW`, `COMPLETA ORDEN DE COMPRE`),
-que no estaban enviando el correo de forma confiable — de ahí este proyecto.
-`COMPLETA ORDEN DE COMPRE` solo avisaba en el último item (3 de 3); acá se
-decidió avisar en cada incremento.
+Estos mapean 1:1 a los 4 workflows nativos de Glide que ya existían
+(`CORREO OC CREADA`, `CORREO NUEVA ORDEN HW`, `CORREO NUEVA ORDEN SW`,
+`COMPLETA ORDEN DE COMPRE`), que no estaban enviando el correo de forma
+confiable — de ahí este proyecto. `COMPLETA ORDEN DE COMPRE` solo avisaba
+en el último item (3 de 3); acá se decidió avisar en cada incremento.
 
-### 📬 Un resumen por destinatario, no un correo por evento
+### 📬 Un correo por tipo por día, no un correo por evento suelto
 
 Los workflows nativos mandaban un correo separado por cada evento. Como el
 cron corre una vez al día, eso significa que un vendedor con varias OC
-activas puede terminar recibiendo varios correos sueltos el mismo día (2 OC
-nuevas + 4 items agregados + 2 avances de OPI = 8 correos). En vez de eso,
-cada corrida arma **un solo correo de resumen por destinatario**, agrupando
-todos sus eventos del día por tipo (`lib/digest.js`). El log de
-notificaciones sigue siendo por evento individual (para no re-notificar lo
-mismo), pero el envío es agrupado.
+activas puede terminar recibiendo varios correos sueltos el mismo día (2 HW
++ 2 SW + 2 OC nuevas = 6 correos). En vez de eso, cada corrida agrupa los
+eventos del día por **destinatario y por tipo** (`lib/digest.js`): si un
+vendedor tiene eventos de 3 tipos distintos hoy, recibe 3 correos (uno de
+"Hardware agregado" listando los 2, uno de "Software agregado" listando los
+2, uno de "OC nueva" listando las 2) — nunca uno por evento individual, pero
+tampoco todo mezclado en un solo correo. El log de notificaciones sigue
+siendo por evento individual (para no re-notificar lo mismo).
 
 ### ⚠️ Limitación importante de la API de Glide
 
@@ -52,13 +55,20 @@ una tabla de Glide — ver más abajo).
 
 Entrando a `https://<tu-proyecto>.vercel.app/admin` (pide usuario/contraseña,
 ver `ADMIN_USER`/`ADMIN_PASSWORD`) hay un panel con un tab por tipo de
-evento **más un tab "digest"**. El tab "digest" es el encabezado del correo
-de resumen (asunto + intro); los demás tabs son cómo se ve la línea de cada
-evento dentro de ese resumen (agrupadas automáticamente bajo un título como
-"Nuevas Órdenes de Compra (2)"). Hay vista previa en vivo y botones para
-insertar los placeholders disponibles (`{{numeroOC}}`, `{{proveedor}}`,
-etc). Los cambios se guardan como JSON en Vercel Blob y los toma la próxima
-corrida del cron — sin redeploy, sin git, sin pedirle nada a nadie.
+evento **más un tab "digest"**:
+
+- **"digest"** es el sobre compartido por los 4 correos: su Asunto y Cuerpo
+  (intro) se usan siempre, con `{{tipo}}` (ej. "Hardware agregado") y
+  `{{total}}` (cuántos eventos de ese tipo hay hoy) como placeholders.
+- **Los otros 4 tabs** (`nueva_oc`, `hw_agregado`, `sw_agregado`,
+  `opi_progreso`) solo tienen un campo real: la línea que representa UN
+  evento de ese tipo dentro del correo (ej. "Nueva OC registrada:
+  011-2026"). Su "Cuerpo" no se usa — el panel lo oculta automáticamente.
+
+Hay vista previa en vivo (arma el correo completo: sobre + 2 líneas de
+ejemplo) y botones para insertar los placeholders disponibles. Los cambios
+se guardan como JSON en Vercel Blob y los toma la próxima corrida del cron
+— sin redeploy, sin git, sin pedirle nada a nadie.
 
 ## 💾 Dónde vive cada dato
 
@@ -113,9 +123,10 @@ conectado (`glide-core-mcp`). Confirmado hasta ahora:
 
 - **Tabla de OC** = `Comtrol de Ordenes de Compra Track`, columnas `N°OC`,
   `OPI`, `Estado` (valores vistos: `RECIBIDO`, `DIFERIDO`), `Correo 0/1/2`.
-- **Items** = `*HARDWARE` (columnas `Nro OC`, `NRO OPI`) y `*SOFTWARE`
-  (columnas `N OC`, `Opi`) — el vínculo a la OC es por texto, solo se usa
-  para el evento "item agregado".
+- **Items** = `*HARDWARE` (columnas `Nro OC`, `NRO OPI`) → evento
+  `hw_agregado`, y `*SOFTWARE` (columnas `N OC`, `Opi`) → evento
+  `sw_agregado` — el vínculo a la OC es por texto, cada tabla dispara su
+  propio tipo de correo.
 - **Progreso por OPI** = agrupar filas de OC por `OPI` y contar cuántas
   tienen `Estado = RECIBIDO` sobre el total del grupo — replica exactamente
   la relación nativa `Relación por PPR` (self-relation de OC por `OPI`,
@@ -151,8 +162,8 @@ Pendiente de confirmar:
 2. **Destinatarios fijos**: los 4 workflows nativos siempre agregaban
    `jcjaramillov@coresolutions.com.ec` y `asistenteadm@coresolutions.com.ec`
    (To/Cc fijos) además del destinatario resuelto. Si querés replicar eso,
-   cargalos en `NOTIFY_EXTRA_NUEVA_OC`, `NOTIFY_EXTRA_ITEM_AGREGADO` y
-   `NOTIFY_EXTRA_OPI_PROGRESO` en `.env`.
+   cargalos en `NOTIFY_EXTRA_NUEVA_OC`, `NOTIFY_EXTRA_HW_AGREGADO`,
+   `NOTIFY_EXTRA_SW_AGREGADO` y `NOTIFY_EXTRA_OPI_PROGRESO` en `.env`.
 3. Revisar el workflow `CORREO OC CREADA` a fondo para terminar de validar
    `nueva_oc` contra su lógica real (en curso).
 
