@@ -1,7 +1,7 @@
 # CoreTrackAPI
 
 Cron serverless en Vercel que monitorea eventos de **CoreTrack** (app de Glide)
-y notifica por correo (Gmail API), ya que Glide no ofrece webhooks salientes.
+y notifica por correo (Resend), ya que Glide no ofrece webhooks salientes.
 
 Detecta cuatro tipos de evento, cada uno con su propio correo:
 
@@ -91,7 +91,7 @@ lib/blobStore.js              Lectura/escritura de JSON en Vercel Blob
 lib/detectEvents.js         Lógica pura de diff/detección de eventos (testeable)
 lib/notificationLog.js      Log de notificaciones (JSON en Vercel Blob)
 lib/templates.js             Carga/guarda plantillas (JSON en Vercel Blob) + motor {{placeholder}}
-lib/mailer.js                Envío de correo vía Gmail API
+lib/mailer.js                Envío de correo vía la API de Resend
 lib/emailTemplates.js       Arma asunto/HTML de UNA línea de evento (plantilla + payload)
 lib/digest.js                 Agrupa eventos por destinatario y arma el correo de resumen
 lib/resolvePersonal.js      Resuelve nombres de Personal -> email vía tabla Users
@@ -203,25 +203,31 @@ Copiar `.env.example` a `.env` (local) y cargar las mismas en Vercel
 - `GLIDE_API_TOKEN`, `GLIDE_APP_ID`
 - `GLIDE_TABLE_OC`, `GLIDE_TABLE_HARDWARE`, `GLIDE_TABLE_SOFTWARE`, `GLIDE_TABLE_USERS`
 - `BLOB_READ_WRITE_TOKEN` (la agrega Vercel solo al conectar el Blob Store del paso 2)
-- `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER`
+- `RESEND_API_KEY`, `RESEND_FROM`
 - `NOTIFY_EXTRA_*` (opcional)
 - `CRON_SECRET` (recomendado, ver abajo)
 - `ADMIN_USER`, `ADMIN_PASSWORD` (para entrar a `/admin` a editar los textos de los correos)
 
-### 4. Credenciales de Gmail API
+### 4. Cuenta de Resend
 
-1. En [Google Cloud Console](https://console.cloud.google.com/), crear (o
-   reusar) un proyecto y habilitar **Gmail API**.
-2. Crear credenciales OAuth2 de tipo "Desktop app" → obtener
-   `client_id` y `client_secret`.
-3. Generar un `refresh_token` una sola vez, con scope
-   `https://www.googleapis.com/auth/gmail.send`, autenticando con la cuenta
-   de Gmail que va a enviar los correos (por ejemplo usando
-   [Google OAuth Playground](https://developers.google.com/oauthplayground):
-   configurar los "custom" client_id/secret en el ícono de settings, elegir
-   el scope de Gmail send, autorizar, e intercambiar el código por tokens).
-4. Guardar `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` y
-   la dirección remitente en `GMAIL_SENDER`.
+CoreTrack notifica por correo vía [Resend](https://resend.com) — no depende
+de Gmail ni de Outlook/Microsoft 365 (la cuenta real del equipo,
+`jcjaramillov@coresolutions.com.ec`, es Microsoft 365; Resend no necesita
+acceso a ese buzón para nada).
+
+1. Crear una cuenta gratis en [resend.com](https://resend.com) (no pide
+   tarjeta). El plan gratis permite 3.000 correos/mes, tope de 100/día — de
+   sobra para este uso.
+2. **Verificar el dominio** `coresolutions.com.ec`: Dashboard → **Domains**
+   → **Add Domain** → seguir las instrucciones para agregar los registros
+   DNS (SPF/DKIM) que te muestra Resend en el proveedor donde esté
+   administrado el dominio. Sin este paso no se puede enviar como
+   `@coresolutions.com.ec` (se puede probar con la dirección genérica de
+   Resend mientras tanto).
+3. Generar una **API key**: Dashboard → **API Keys** → **Create API Key**.
+4. Guardar `RESEND_API_KEY` (la key generada) y `RESEND_FROM` (ej.
+   `"CoreTrack <coretrack@coresolutions.com.ec>"`, con el dominio ya
+   verificado).
 
 ### 5. Probar localmente
 
